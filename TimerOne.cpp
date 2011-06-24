@@ -10,6 +10,8 @@
  *  or send a letter to Creative Commons, 171 Second Street, Suite 300, San Francisco, California, 94105, USA.
  *
  */
+#ifndef TIMERONE_cpp
+#define TIMERONE_cpp
 
 #include "TimerOne.h"
 
@@ -23,13 +25,13 @@ ISR(TIMER1_OVF_vect)          // interrupt service routine that wraps a user def
 void TimerOne::initialize(long microseconds)
 {
   TCCR1A = 0;                 // clear control register A 
-  TCCR1B = _BV(WGM13);        // set mode as phase and frequency correct pwm, stop the timer
+  TCCR1B = _BV(WGM13);        // set mode 8: phase and frequency correct pwm, stop the timer
   setPeriod(microseconds);
 }
 
 void TimerOne::setPeriod(long microseconds)
 {
-  long cycles = (F_CPU * microseconds) / 2000000;                                // the counter runs backwards after TOP, interrupt is at BOTTOM so divide microseconds by 2
+  long cycles = (F_CPU / 2000000) * microseconds;                                // the counter runs backwards after TOP, interrupt is at BOTTOM so divide microseconds by 2
   if(cycles < RESOLUTION)              clockSelectBits = _BV(CS10);              // no prescale, full xtal
   else if((cycles >>= 3) < RESOLUTION) clockSelectBits = _BV(CS11);              // prescale by /8
   else if((cycles >>= 3) < RESOLUTION) clockSelectBits = _BV(CS11) | _BV(CS10);  // prescale by /64
@@ -99,3 +101,35 @@ void TimerOne::restart()
 {
   TCNT1 = 0;
 }
+
+unsigned long TimerOne::read()		//returns the value of the timer in microseconds
+{									//rember! phase and freq correct mode counts up to then down again
+	unsigned int tmp=TCNT1;
+	char scale=0;
+	switch (clockSelectBits)
+	{
+	case 1:// no prescalse
+		scale=0;
+		break;
+	case 2:// x8 prescale
+		scale=3;
+		break;
+	case 3:// x64
+		scale=6;
+		break;
+	case 4:// x256
+		scale=8;
+		break;
+	case 5:// x1024
+		scale=10;
+		break;
+	}
+	while (TCNT1==tmp) //if the timer has not ticked yet
+	{
+		//do nothing -- max delay here is ~1023 cycles
+	}
+	tmp = (  (TCNT1>tmp) ? (tmp) : (ICR1-TCNT1)+ICR1  );//if we are counting down add the top value to how far we have counted down
+	return ((tmp*1000L)/(F_CPU /1000L))<<scale;
+}
+
+#endif
